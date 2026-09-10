@@ -12,17 +12,19 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
-from groq import Groq
+from groq import Groq, RateLimitError
 
 from .schema import ACTIVE_SCHEMA, DatasetSchema, build_tool_definitions
 from .tools import ToolInputError, ToolResult, filter_and_aggregate, infer_chart_kind, top_n
 
-DEFAULT_MODEL = os.environ.get("ASKMYCITY_MODEL", "llama-3.3-70b-versatile")
+DEFAULT_MODEL = os.environ.get("ASKMYCITY_MODEL", "openai/gpt-oss-120b")
 MAX_TOOL_TURNS = 4
+MAX_RATE_LIMIT_RETRIES = 3
 
 _TOOL_IMPLS = {
     "filter_and_aggregate": filter_and_aggregate,
@@ -79,11 +81,36 @@ def _to_openai_tools(tools: list[dict]) -> list[dict]:
     ]
 
 
-def _run_tool(name: str, tool_input: dict[str, Any], df: pd.DataFrame) -> ToolResult:
-    impl = _TOOL_IMPLS.get(name)
+def _run_tool(
+    name: str, tool_input: dict[str, Any], df: pd.DataFrame, schema: DatasetSchema
+) -> ToolResult:
+    # Some models (observed with gpt-oss's Harmony response format on Groq)
+    # occasionally leak a "<|channel|>..." marker onto the end of the tool
+    # name — strip it rather than fail on an otherwise-valid call.
+    clean_name = name.split("<|")[0]
+    impl = _TOOL_IMPLS.get(clean_name)
     if impl is None:
         raise ToolInputError(f"Unknown tool '{name}'")
-    return impl(df, **tool_input)
+    # date_col isn't exposed to the model (schema.py only exposes
+    # start_date/end_date/group_by/etc) — it's always the schema's date
+    # column, so inject it here rather than relying on the model to guess
+    # an internal parameter name for it. `tool_input` wins nothing here:
+    # if the model somehow guesses the key "date_col" too, ours overrides
+    # rather than raising a duplicate-keyword TypeError.
+    return impl(df, **{**tool_input, "date_col": schema.date_col})
+
+
+def _call_model(client: Groq, **kwargs: Any):
+    """chat.completions.create with a short retry-with-backoff on 429s —
+    the free tier's tokens-per-minute limit is easy to hit with a handful
+    of tool-result round trips."""
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except RateLimitError:
+            if attempt == MAX_RATE_LIMIT_RETRIES:
+                raise
+            time.sleep(2**attempt)
 
 
 def _chart_kind_for(schema: DatasetSchema, table: pd.DataFrame) -> str | None:
@@ -116,11 +143,18 @@ def ask(
     last_result: ToolResult | None = None
 
     for _ in range(max_tool_turns):
-        response = client.chat.completions.create(
+        response = _call_model(
+            client,
             model=model,
             max_tokens=1024,
             tools=tools,
             messages=messages,
+            # gpt-oss on Groq sometimes sends `null` for an omitted optional
+            # arg (e.g. group_by: null), which Groq's strict pre-flight
+            # schema check 400s on. Our own tool functions already treat
+            # None as "not provided", so let those calls through and
+            # validate ourselves.
+            disable_tool_validation=True,
         )
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None)
@@ -154,11 +188,14 @@ def ask(
             try:
                 tool_input = json.loads(tc.function.arguments or "{}")
                 record.input = tool_input
-                result = _run_tool(tc.function.name, tool_input, df)
+                result = _run_tool(tc.function.name, tool_input, df, schema)
                 last_result = result
                 record.result_summary = result.summary
                 content = json.dumps(result.to_json())
-            except (ToolInputError, json.JSONDecodeError) as exc:
+            except (ToolInputError, TypeError, json.JSONDecodeError) as exc:
+                # TypeError covers a model passing an argument name that
+                # doesn't exist on the tool (e.g. a hallucinated kwarg) —
+                # fed back the same way so it can retry with valid args.
                 record.error = str(exc)
                 content = f"Error: {exc}"
             call_log.append(record)
