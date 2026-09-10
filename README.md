@@ -127,10 +127,16 @@ deploy.
 
 ## How this was built
 
-Built by three Claude Code sessions working as a small team: a **team lead**
+The app itself was really a vehicle for the actual goal: learning the basics
+of running a **team of independent Claude Code sessions** that coordinate
+with each other — rather than one session doing everything — each owning a
+different part of the problem and working together toward one result.
+
+Built by Claude Code sessions working as a small team: a **team lead**
 (scoping, coordination, code review, merges), a **researcher** (dataset
-selection/licensing, data dictionary, eval question set), and a **developer**
-(architecture, implementation, testing). Each worked in its own [git
+selection/licensing, data dictionary, eval question set), a **developer**
+(architecture, implementation, testing), and a **UI designer** (redesign
+spec + mockup for the interface). Each worked in its own [git
 worktree](https://git-scm.com/docs/git-worktree) on its own feature branch,
 opening PRs reviewed and merged by the team lead — see `CONTRIBUTING.md` /
 `AGENTS.md` for the workflow rules the team followed.
