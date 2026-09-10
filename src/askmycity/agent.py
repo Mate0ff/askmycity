@@ -68,6 +68,11 @@ def _run_tool(name: str, tool_input: dict[str, Any], df: pd.DataFrame) -> ToolRe
     return impl(df, **tool_input)
 
 
+def _chart_kind_for(schema: DatasetSchema, table: pd.DataFrame) -> str | None:
+    chronological = {c.name for c in schema.time_bucket_cols}
+    return infer_chart_kind(table, date_col=schema.date_col, chronological_cols=chronological)
+
+
 def ask(
     question: str,
     df: pd.DataFrame,
@@ -104,7 +109,7 @@ def ask(
             text = "".join(b.text for b in response.content if getattr(b, "type", None) == "text")
             chart_kind = None
             if last_result is not None:
-                chart_kind = infer_chart_kind(last_result.table, date_col=schema.date_col)
+                chart_kind = _chart_kind_for(schema, last_result.table)
             return AgentAnswer(
                 text=text.strip() or "I wasn't able to produce an answer.",
                 tool_calls=call_log,
@@ -143,7 +148,7 @@ def ask(
 
     chart_kind = None
     if last_result is not None:
-        chart_kind = infer_chart_kind(last_result.table, date_col=schema.date_col)
+        chart_kind = _chart_kind_for(schema, last_result.table)
     return AgentAnswer(
         text="I ran out of tool-call turns without reaching a final answer.",
         tool_calls=call_log,
