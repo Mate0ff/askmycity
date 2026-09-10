@@ -1,0 +1,5 @@
+# Runtime dependencies (this is what Streamlit Community Cloud installs from).
+# Dev-only tooling (pytest, ruff) lives in pyproject.toml's [project.optional-dependencies].dev
+streamlit>=1.37
+pandas>=2.2
+anthropic>=0.40
