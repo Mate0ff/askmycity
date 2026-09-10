@@ -1,0 +1,3 @@
+# Deps to re-run download_data.py / eda_sanity_check.py (not the app itself).
+pandas>=2.2
+requests>=2.31
