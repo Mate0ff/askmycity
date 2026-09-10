@@ -1,8 +1,8 @@
 """AskMyCity — Streamlit entrypoint.
 
 Ask a natural-language question about a city's 311-style service requests;
-a Claude tool-use agent answers it by calling deterministic, testable
-analytics tools (never arbitrary code) against the cached dataset.
+a tool-use LLM agent (Groq/GPT-OSS-120B) answers it by calling deterministic,
+testable analytics tools (never arbitrary code) against the cached dataset.
 """
 
 from __future__ import annotations
@@ -33,13 +33,13 @@ def main() -> None:
     st.title("🏙️ AskMyCity")
     st.caption(
         f"Ask questions in plain English about {ACTIVE_SCHEMA.dataset_name}. "
-        "A Claude agent turns your question into calls to a small set of "
+        "An LLM agent turns your question into calls to a small set of "
         "deterministic analytics tools — no arbitrary code execution."
     )
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("GROQ_API_KEY"):
         st.warning(
-            "No `ANTHROPIC_API_KEY` found. Set it as an environment variable locally, "
+            "No `GROQ_API_KEY` found. Set it as an environment variable locally, "
             "or as a Streamlit Cloud secret before deploying. See the README."
         )
         st.stop()

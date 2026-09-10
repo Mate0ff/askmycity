@@ -24,15 +24,15 @@ def _clear_data_cache():
 
 
 def test_app_runs_without_api_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     at = st_testing.AppTest.from_file(APP_PATH).run()
 
     assert not at.exception
-    assert any("ANTHROPIC_API_KEY" in w.value for w in at.warning)
+    assert any("GROQ_API_KEY" in w.value for w in at.warning)
 
 
 def test_app_runs_with_api_key_and_loads_real_dataset(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
     at = st_testing.AppTest.from_file(APP_PATH).run()
 
     assert not at.exception
@@ -40,7 +40,7 @@ def test_app_runs_with_api_key_and_loads_real_dataset(monkeypatch):
 
 
 def test_app_shows_friendly_message_if_dataset_missing(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
     monkeypatch.setattr("askmycity.data.REAL_DATA_FILE", Path("does/not/exist.csv.gz"))
     at = st_testing.AppTest.from_file(APP_PATH).run()
 

@@ -59,6 +59,16 @@ def _require_agg(agg: str) -> None:
         raise ToolInputError(f"Unknown agg '{agg}'. Must be one of {sorted(VALID_AGGS)}")
 
 
+def _parse_date(label: str, value: str) -> pd.Timestamp:
+    # A model can hand back an impossible calendar date (e.g. "2026-02-29"
+    # in a non-leap year) — surface that as a normal tool error the model
+    # can correct, instead of letting pandas' raw ValueError crash the call.
+    try:
+        return pd.Timestamp(value)
+    except (ValueError, TypeError) as exc:
+        raise ToolInputError(f"Invalid {label} '{value}': {exc}") from exc
+
+
 def _apply_date_range(
     df: pd.DataFrame, date_col: str | None, start_date: str | None, end_date: str | None
 ) -> pd.DataFrame:
@@ -69,9 +79,14 @@ def _apply_date_range(
     _require_columns(df, [date_col])
     out = df
     if start_date:
-        out = out[out[date_col] >= pd.Timestamp(start_date)]
+        out = out[out[date_col] >= _parse_date("start_date", start_date)]
     if end_date:
-        out = out[out[date_col] <= pd.Timestamp(end_date)]
+        # "end_date" is a calendar day, inclusive of the whole day — so the
+        # cutoff is the *start* of the next day, not midnight of end_date
+        # itself (which silently dropped every request timestamped later
+        # that same day).
+        cutoff = _parse_date("end_date", end_date) + pd.Timedelta(days=1)
+        out = out[out[date_col] < cutoff]
     return out
 
 

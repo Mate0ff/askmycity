@@ -2,4 +2,4 @@
 # Dev-only tooling (pytest, ruff) lives in pyproject.toml's [project.optional-dependencies].dev
 streamlit>=1.37
 pandas>=2.2
-anthropic>=0.40
+groq>=1.7

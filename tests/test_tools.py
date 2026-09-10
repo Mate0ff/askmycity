@@ -34,6 +34,33 @@ def test_date_range_filter(sample_df):
     assert result.table.iloc[0, 0] == 3
 
 
+def test_end_date_is_inclusive_of_timestamps_later_that_day():
+    # Regression: end_date is a calendar day, but rows are full timestamps.
+    # A naive `<= pd.Timestamp(end_date)` compares against midnight and
+    # silently drops every row later that same day.
+    df = pd.DataFrame(
+        {
+            "created_date": pd.to_datetime(
+                ["2026-02-28 09:00", "2026-02-28 23:30", "2026-03-01 00:00"]
+            )
+        }
+    )
+    result = filter_and_aggregate(
+        df, agg="count", date_col="created_date", end_date="2026-02-28"
+    )
+    assert result.table.iloc[0, 0] == 2
+
+
+def test_invalid_date_raises_tool_input_error_not_raw_valueerror(sample_df):
+    # e.g. a model guessing "2026-02-29" in a non-leap year — pandas'
+    # ValueError must come back as a ToolInputError so it can be fed back
+    # to the model as a normal tool error instead of crashing the call.
+    with pytest.raises(ToolInputError, match="Invalid end_date"):
+        filter_and_aggregate(
+            sample_df, agg="count", date_col="created_date", end_date="2026-02-29"
+        )
+
+
 def test_group_by_count(sample_df):
     result = filter_and_aggregate(sample_df, agg="count", group_by="category")
     counts = dict(zip(result.table["category"], result.table["count"]))

@@ -1,8 +1,8 @@
 """Runs data/eval_questions.md through the live agent as a correctness check.
 
-Not part of `pytest`/CI — this makes real Anthropic API calls (costs money,
-needs ANTHROPIC_API_KEY) and its output is a judgment call for a human to
-skim, not a pass/fail assertion.
+Not part of `pytest`/CI — this makes real Groq API calls (needs
+GROQ_API_KEY) and its output is a judgment call for a human to skim, not a
+pass/fail assertion.
 
 Usage:
     python scripts/run_eval.py                # all questions
