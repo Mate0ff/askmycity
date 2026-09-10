@@ -3,3 +3,4 @@
 streamlit>=1.37
 pandas>=2.2
 groq>=1.7
+altair>=5.0  # transitive via streamlit, pinned directly since we import it for chart control
