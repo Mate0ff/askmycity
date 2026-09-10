@@ -33,7 +33,9 @@ def test_app_runs_without_api_key(monkeypatch):
 
 def test_app_runs_with_api_key_and_loads_real_dataset(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
-    at = st_testing.AppTest.from_file(APP_PATH).run()
+    # Loading+cleaning the real 280k-row CSV can take longer than
+    # AppTest's 3s default, especially on a cold cache.
+    at = st_testing.AppTest.from_file(APP_PATH).run(timeout=30)
 
     assert not at.exception
     assert at.text_input  # the question box rendered, i.e. the dataset loaded fine

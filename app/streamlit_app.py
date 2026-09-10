@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 
+import altair as alt
 import streamlit as st
 
 # Make `src/` importable when run as `streamlit run app/streamlit_app.py`
@@ -73,7 +74,29 @@ def main() -> None:
         if answer.chart_kind == "line":
             st.line_chart(table)
         elif answer.chart_kind == "bar":
-            st.bar_chart(table)
+            cat_col, val_col = answer.chart_table.columns[0], answer.chart_table.columns[-1]
+            chart = (
+                alt.Chart(answer.chart_table)
+                .mark_bar()
+                .encode(
+                    # sort='-y' ranks bars by value, matching top_n's order,
+                    # regardless of the category column's own sort order.
+                    x=alt.X(
+                        f"{cat_col}:N",
+                        sort="-y",
+                        title=None,
+                        # Vertical labels take far less horizontal room per
+                        # bar than an angled label, so all of them fit
+                        # without Vega-Lite silently dropping the crowded
+                        # ones (what a -40° angle did with 5+ categories).
+                        axis=alt.Axis(labelAngle=-90, labelLimit=200, labelOverlap=False),
+                    ),
+                    y=alt.Y(f"{val_col}:Q", title=val_col),
+                    tooltip=list(answer.chart_table.columns),
+                )
+                .properties(height=420)
+            )
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.dataframe(answer.chart_table, use_container_width=True)
 
