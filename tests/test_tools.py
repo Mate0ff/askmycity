@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from askmycity.tools import ToolInputError, filter_and_aggregate, infer_chart_kind, top_n
@@ -90,3 +91,29 @@ def test_infer_chart_kind_bar_for_group_by(sample_df):
 def test_infer_chart_kind_none_for_single_value(sample_df):
     result = filter_and_aggregate(sample_df, agg="count")
     assert infer_chart_kind(result.table) is None
+
+
+def test_sort_by_group_orders_chronologically():
+    df = pd.DataFrame(
+        {
+            "created_month": ["2026-03", "2026-01", "2026-02", "2026-01"],
+            "category": ["pothole"] * 4,
+        }
+    )
+    result = filter_and_aggregate(df, agg="count", group_by="created_month", sort_by="group")
+    assert list(result.table["created_month"]) == ["2026-01", "2026-02", "2026-03"]
+
+
+def test_sort_by_default_orders_by_value_desc(sample_df):
+    result = filter_and_aggregate(sample_df, agg="count", group_by="category")
+    assert list(result.table["count"]) == sorted(result.table["count"], reverse=True)
+
+
+def test_sort_by_invalid_raises(sample_df):
+    with pytest.raises(ToolInputError, match="sort_by"):
+        filter_and_aggregate(sample_df, agg="count", group_by="category", sort_by="bogus")
+
+
+def test_infer_chart_kind_line_for_chronological_col():
+    table = pd.DataFrame({"created_month": ["2026-01", "2026-02"], "count": [3, 5]})
+    assert infer_chart_kind(table, chronological_cols={"created_month"}) == "line"

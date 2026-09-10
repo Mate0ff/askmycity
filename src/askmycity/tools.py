@@ -102,13 +102,21 @@ def filter_and_aggregate(
     filters: dict[str, Any] | None = None,
     group_by: str | None = None,
     metric: str | None = None,
+    sort_by: str = "value",
 ) -> ToolResult:
     """Filter rows, then aggregate — optionally grouped by one column.
 
     `agg='count'` counts rows (metric is ignored); any other agg requires
     `metric` to name a numeric column.
+
+    `sort_by` controls how a grouped result is ordered: 'value' (default)
+    sorts by the aggregated number descending — for rankings; 'group' sorts
+    by the group_by column ascending — for a chronological trend/time series
+    (e.g. group_by a month-bucket column).
     """
     _require_agg(agg)
+    if sort_by not in ("value", "group"):
+        raise ToolInputError("sort_by must be 'value' or 'group'")
     if agg != "count" and not metric:
         raise ToolInputError("metric is required unless agg='count'")
     if metric:
@@ -125,7 +133,10 @@ def filter_and_aggregate(
             result = grouped.size().rename("count").reset_index()
         else:
             result = grouped[metric].agg(agg).rename(metric).reset_index()
-        result = result.sort_values(result.columns[-1], ascending=False)
+        if sort_by == "group":
+            result = result.sort_values(group_by, ascending=True)
+        else:
+            result = result.sort_values(result.columns[-1], ascending=False)
         summary = (
             f"{agg} of {metric or 'rows'} grouped by {group_by}, "
             f"over {len(filtered)} matching rows across {len(result)} groups."
@@ -168,16 +179,24 @@ def top_n(
     return ToolResult(table=ranked.reset_index(drop=True), summary=summary)
 
 
-def infer_chart_kind(table: pd.DataFrame, date_col: str | None = None) -> str | None:
+def infer_chart_kind(
+    table: pd.DataFrame,
+    date_col: str | None = None,
+    chronological_cols: set[str] | None = None,
+) -> str | None:
     """Cheap heuristic for how the Streamlit UI should chart a tool result.
 
-    Returns 'line' if the table is indexed/grouped by the date column,
-    'bar' if it has a categorical group-by column plus a numeric value
-    column, or None if there's nothing chart-worthy (e.g. a single number).
+    Returns 'line' if the table is grouped by the date column or one of
+    `chronological_cols` (e.g. a month-bucket column), 'bar' if it has a
+    categorical group-by column plus a numeric value column, or None if
+    there's nothing chart-worthy (e.g. a single number).
     """
     if table.shape[0] <= 1 or table.shape[1] < 2:
         return None
     first_col = table.columns[0]
-    if date_col and first_col == date_col:
+    chronological = set(chronological_cols or ())
+    if date_col:
+        chronological.add(date_col)
+    if first_col in chronological:
         return "line"
     return "bar"
