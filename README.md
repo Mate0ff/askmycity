@@ -67,8 +67,13 @@ unit-tested Python.
 
 ## Dataset
 
-_TODO: filled in once the dataset is finalized — see `data/DATA_DICTIONARY.md`
-and `data/eval_questions.md`._
+[Austin 311 Public Data](https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he)
+(Socrata, public domain, attributed to the City of Austin) — a fixed 12-month
+window (Sep 2025–Aug 2026), 280k+ service requests, cached in-repo as
+`data/austin_311_*.csv.gz` (~7MB) so the app doesn't depend on a live API.
+See `data/DATA_DICTIONARY.md` for columns/known quirks and
+`data/eval_questions.md` for the 20-question eval set used to test the agent
+(results in `data/eval_results.md`).
 
 ## Running locally
 
@@ -111,10 +116,25 @@ Deployed on [Streamlit Community Cloud](https://streamlit.io/cloud):
 point it at `app/streamlit_app.py`, set the `GROQ_API_KEY` secret, and
 deploy.
 
+> **Note:** Groq's free tier caps at 200K tokens/day per model. Fine for
+> normal demo use; heavy iteration (e.g. re-running the full eval set
+> repeatedly) can hit it.
+
 ## How this was built
 
-_TODO: multi-agent Claude Code workflow writeup (team lead / researcher /
-developer sessions collaborating) — to be added once the build is complete._
+Built by three Claude Code sessions working as a small team: a **team lead**
+(scoping, coordination, code review, merges), a **researcher** (dataset
+selection/licensing, data dictionary, eval question set), and a **developer**
+(architecture, implementation, testing). Each worked in its own [git
+worktree](https://git-scm.com/docs/git-worktree) on its own feature branch,
+opening PRs reviewed and merged by the team lead — see `CONTRIBUTING.md` /
+`AGENTS.md` for the workflow rules the team followed.
+
+Running the 20-question eval set against the live agent — not just unit
+tests — surfaced 6 real bugs (a silently-dropped date filter, an off-by-a-day
+undercount, model-specific output leakage, missing retry/error handling)
+that all passed a clean test suite beforehand. Full detail in
+`data/eval_results.md`.
 
 ## License
 
