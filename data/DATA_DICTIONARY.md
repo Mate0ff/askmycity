@@ -3,7 +3,7 @@
 **File:** `austin_311_2025-09_2026-08.csv.gz` (~7.3MB, gzip CSV, 280,397 rows)
 **Source:** City of Austin Open Data Portal (Socrata), dataset [Austin 311 Public Data](https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he), endpoint `data.austintexas.gov/resource/xwdj-i9he.json`. Fetched via `download_data.py`.
 **Date range:** 2025-09-01 to 2026-08-31 (12 full calendar months — fixed window, not "trailing 12 months", so the cache is reproducible and never ends mid-month).
-**License:** No explicit machine-readable license tag on this dataset in the Socrata catalog; the portal is governed by the City of Austin's general Open Data Terms of Use. I could not extract the exact clause text (the terms page is JS-rendered and blocked automated fetch) — **please have a human skim it before the repo goes public**: https://data.austintexas.gov/stories/s/City-of-Austin-Open-Data-Terms-of-Use/ranj-cccq/. City open-data portals are near-universally open for reuse, but this wasn't independently confirmed.
+**License:** `PUBLIC_DOMAIN` (confirmed via `data.austintexas.gov/api/views/xwdj-i9he.json`). Attribution: City of Austin, Texas — data.austintexas.gov.
 
 ## Columns
 
