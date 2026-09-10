@@ -1,31 +1,48 @@
-"""Agent-loop tests using a fake Anthropic client — no network/API key needed.
+"""Agent-loop tests using a fake Groq (OpenAI-compatible) client — no
+network/API key needed.
 
 These test the tool-use *loop* wiring (dispatch, error feedback, turn
 budget), not the LLM's judgement, since that's covered separately by the
-eval question set once the real dataset lands.
+eval question set once a real GROQ_API_KEY is available.
 """
 
 from __future__ import annotations
 
+import json
+
 from askmycity.agent import ask
 
 
-class FakeBlock:
-    def __init__(self, type, *, text=None, id=None, name=None, input=None):
-        self.type = type
-        self.text = text
-        self.id = id
+class FakeFunction:
+    def __init__(self, name, arguments):
         self.name = name
-        self.input = input
+        self.arguments = arguments  # a JSON string, like the real API
+
+
+class FakeToolCall:
+    def __init__(self, id, name, arguments: dict):
+        self.id = id
+        self.type = "function"
+        self.function = FakeFunction(name, json.dumps(arguments))
+
+
+class FakeMessage:
+    def __init__(self, content=None, tool_calls=None):
+        self.content = content
+        self.tool_calls = tool_calls
+
+
+class FakeChoice:
+    def __init__(self, message):
+        self.message = message
 
 
 class FakeResponse:
-    def __init__(self, content, stop_reason):
-        self.content = content
-        self.stop_reason = stop_reason
+    def __init__(self, message):
+        self.choices = [FakeChoice(message)]
 
 
-class FakeMessages:
+class FakeCompletions:
     def __init__(self, responses):
         self._responses = list(responses)
 
@@ -33,28 +50,28 @@ class FakeMessages:
         return self._responses.pop(0)
 
 
+class FakeChat:
+    def __init__(self, responses):
+        self.completions = FakeCompletions(responses)
+
+
 class FakeClient:
     def __init__(self, responses):
-        self.messages = FakeMessages(responses)
+        self.chat = FakeChat(responses)
 
 
 def test_ask_happy_path_one_tool_call(sample_df):
     responses = [
         FakeResponse(
-            content=[
-                FakeBlock(
-                    "tool_use",
-                    id="call_1",
-                    name="top_n",
-                    input={"group_by": "category", "agg": "count", "n": 2},
-                )
-            ],
-            stop_reason="tool_use",
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        "call_1", "top_n", {"group_by": "category", "agg": "count", "n": 2}
+                    )
+                ]
+            )
         ),
-        FakeResponse(
-            content=[FakeBlock("text", text="Potholes were the top category.")],
-            stop_reason="end_turn",
-        ),
+        FakeResponse(FakeMessage(content="Potholes were the top category.")),
     ]
     result = ask(question="top categories?", df=sample_df, client=FakeClient(responses))
 
@@ -69,31 +86,28 @@ def test_ask_happy_path_one_tool_call(sample_df):
 def test_ask_feeds_tool_error_back_and_recovers(sample_df):
     responses = [
         FakeResponse(
-            content=[
-                FakeBlock(
-                    "tool_use",
-                    id="call_1",
-                    name="filter_and_aggregate",
-                    input={"agg": "count", "filters": {"not_a_column": "x"}},
-                )
-            ],
-            stop_reason="tool_use",
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        "call_1",
+                        "filter_and_aggregate",
+                        {"agg": "count", "filters": {"not_a_column": "x"}},
+                    )
+                ]
+            )
         ),
         FakeResponse(
-            content=[
-                FakeBlock(
-                    "tool_use",
-                    id="call_2",
-                    name="filter_and_aggregate",
-                    input={"agg": "count", "filters": {"category": "pothole"}},
-                )
-            ],
-            stop_reason="tool_use",
+            FakeMessage(
+                tool_calls=[
+                    FakeToolCall(
+                        "call_2",
+                        "filter_and_aggregate",
+                        {"agg": "count", "filters": {"category": "pothole"}},
+                    )
+                ]
+            )
         ),
-        FakeResponse(
-            content=[FakeBlock("text", text="There were 3 pothole requests.")],
-            stop_reason="end_turn",
-        ),
+        FakeResponse(FakeMessage(content="There were 3 pothole requests.")),
     ]
     result = ask(question="how many potholes?", df=sample_df, client=FakeClient(responses))
 
@@ -107,12 +121,9 @@ def test_ask_stops_after_max_tool_turns(sample_df):
     # The fake model never stops calling tools; the loop must still terminate.
     responses = [
         FakeResponse(
-            content=[
-                FakeBlock(
-                    "tool_use", id=f"call_{i}", name="filter_and_aggregate", input={"agg": "count"}
-                )
-            ],
-            stop_reason="tool_use",
+            FakeMessage(
+                tool_calls=[FakeToolCall(f"call_{i}", "filter_and_aggregate", {"agg": "count"})]
+            )
         )
         for i in range(10)
     ]
