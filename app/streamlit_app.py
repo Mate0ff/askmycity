@@ -88,13 +88,25 @@ h1 {
     margin-bottom: 1.5rem;
 }
 
-/* Example-question chips (st.button(type="secondary")). */
+/* Example-question chips (st.button(type="secondary")). Full question text
+   should be readable, not ellipsis-truncated to one line — override
+   Streamlit's default single-line button text. */
 button[kind="secondary"] {
     border-radius: 999px !important;
     background-color: transparent !important;
     border: 1px solid #232D38 !important;
     color: #9AA7B2 !important;
+    height: auto !important;
+    min-height: 3rem;
+    white-space: normal !important;
+    overflow-wrap: break-word;
+    line-height: 1.3;
+    padding: 0.6rem 0.9rem;
     transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+button[kind="secondary"] p {
+    white-space: normal !important;
+    overflow-wrap: break-word;
 }
 button[kind="secondary"]:hover {
     border-color: #38BDF8 !important;
@@ -253,13 +265,18 @@ def main() -> None:
 
     st.session_state.setdefault("question", "")
     st.markdown('<div class="askmycity-section-label">Ask a question</div>', unsafe_allow_html=True)
-    question = st.text_input(
-        "Ask a question",
-        key="question",
-        placeholder="e.g. What were the top 5 complaint categories last month?",
-        label_visibility="collapsed",
-    )
-    ask_clicked = st.button("Ask", type="primary", disabled=not question)
+    input_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
+    with input_col:
+        question = st.text_input(
+            "Ask a question",
+            key="question",
+            placeholder="e.g. What were the top 5 complaint categories last month?",
+            label_visibility="collapsed",
+        )
+    with button_col:
+        ask_clicked = st.button(
+            "Ask", type="primary", disabled=not question, use_container_width=True
+        )
     auto_submit = st.session_state.pop("auto_submit", False)
     submitted = ask_clicked or auto_submit
 
