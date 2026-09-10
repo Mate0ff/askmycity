@@ -48,3 +48,27 @@ def test_app_shows_friendly_message_if_dataset_missing(monkeypatch):
 
     assert not at.exception
     assert any("Dataset not ready" in i.value for i in at.info)
+
+
+def test_example_chip_click_fills_input_and_autosubmits(monkeypatch):
+    # Matches the first entry of EXAMPLE_QUESTIONS in app/streamlit_app.py.
+    example_question = "How many 311 requests were filed in total?"
+
+    from askmycity.agent import AgentAnswer
+
+    monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
+    monkeypatch.setattr(
+        "askmycity.agent.ask",
+        lambda question, df: AgentAnswer(text=f"Answer to: {question}"),
+    )
+
+    at = st_testing.AppTest.from_file(APP_PATH).run(timeout=30)
+    assert not at.exception
+
+    # Clicking a chip should fill the input AND run the query immediately —
+    # no separate click on "Ask" required.
+    at.button(key="example_Count").click().run(timeout=30)
+
+    assert not at.exception
+    assert at.session_state["question"] == example_question
+    assert any(f"Answer to: {example_question}" in md.value for md in at.markdown)
