@@ -1,9 +1,11 @@
-"""The Claude tool-use loop: turns a natural-language question into calls
-against the deterministic tools in `tools.py`, then a short NL answer.
+"""The tool-use loop: turns a natural-language question into calls against
+the deterministic tools in `tools.py`, then a short NL answer.
 
-The model never executes arbitrary code and never sees the raw dataframe —
-it only ever picks a tool name + JSON arguments (validated against
-`schema.py`), and gets back a small JSON table + summary to reason over.
+Uses Groq's OpenAI-compatible chat completions API (function/tool calling)
+as the LLM. The model never executes arbitrary code and never sees the raw
+dataframe — it only ever picks a tool name + JSON arguments (validated
+against `schema.py`), and gets back a small JSON table + summary to reason
+over.
 """
 
 from __future__ import annotations
@@ -13,13 +15,13 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-import anthropic
 import pandas as pd
+from groq import Groq
 
 from .schema import ACTIVE_SCHEMA, DatasetSchema, build_tool_definitions
 from .tools import ToolInputError, ToolResult, filter_and_aggregate, infer_chart_kind, top_n
 
-DEFAULT_MODEL = os.environ.get("ASKMYCITY_MODEL", "claude-sonnet-5")
+DEFAULT_MODEL = os.environ.get("ASKMYCITY_MODEL", "llama-3.3-70b-versatile")
 MAX_TOOL_TURNS = 4
 
 _TOOL_IMPLS = {
@@ -61,6 +63,22 @@ def _system_prompt(schema: DatasetSchema) -> str:
     )
 
 
+def _to_openai_tools(tools: list[dict]) -> list[dict]:
+    """Wraps schema.py's flat {name, description, input_schema} tool defs in
+    OpenAI/Groq's {"type": "function", "function": {...}} shape."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in tools
+    ]
+
+
 def _run_tool(name: str, tool_input: dict[str, Any], df: pd.DataFrame) -> ToolResult:
     impl = _TOOL_IMPLS.get(name)
     if impl is None:
@@ -78,77 +96,75 @@ def ask(
     df: pd.DataFrame,
     *,
     schema: DatasetSchema = ACTIVE_SCHEMA,
-    client: anthropic.Anthropic | None = None,
+    client: Groq | None = None,
     model: str = DEFAULT_MODEL,
     max_tool_turns: int = MAX_TOOL_TURNS,
 ) -> AgentAnswer:
     """Ask the agent a natural-language question about `df`.
 
-    Requires ANTHROPIC_API_KEY in the environment unless `client` is passed
+    Requires GROQ_API_KEY in the environment unless `client` is passed
     explicitly (e.g. a fake/mock client in tests).
     """
-    client = client or anthropic.Anthropic()
-    tools = build_tool_definitions(schema)
-    system = _system_prompt(schema)
-    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    client = client or Groq()
+    tools = _to_openai_tools(build_tool_definitions(schema))
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _system_prompt(schema)},
+        {"role": "user", "content": question},
+    ]
 
     call_log: list[ToolCallRecord] = []
     last_result: ToolResult | None = None
 
     for _ in range(max_tool_turns):
-        response = client.messages.create(
+        response = client.chat.completions.create(
             model=model,
             max_tokens=1024,
-            system=system,
             tools=tools,
             messages=messages,
         )
-        messages.append({"role": "assistant", "content": response.content})
+        message = response.choices[0].message
+        tool_calls = getattr(message, "tool_calls", None)
 
-        if response.stop_reason != "tool_use":
-            text = "".join(b.text for b in response.content if getattr(b, "type", None) == "text")
-            chart_kind = None
-            if last_result is not None:
-                chart_kind = _chart_kind_for(schema, last_result.table)
+        if not tool_calls:
+            chart_kind = _chart_kind_for(schema, last_result.table) if last_result else None
             return AgentAnswer(
-                text=text.strip() or "I wasn't able to produce an answer.",
+                text=(message.content or "").strip() or "I wasn't able to produce an answer.",
                 tool_calls=call_log,
                 chart_table=last_result.table if last_result is not None else None,
                 chart_kind=chart_kind,
             )
 
-        tool_results_content = []
-        for block in response.content:
-            if getattr(block, "type", None) != "tool_use":
-                continue
-            record = ToolCallRecord(name=block.name, input=block.input)
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in tool_calls
+                ],
+            }
+        )
+
+        for tc in tool_calls:
+            record = ToolCallRecord(name=tc.function.name, input={})
             try:
-                result = _run_tool(block.name, block.input, df)
+                tool_input = json.loads(tc.function.arguments or "{}")
+                record.input = tool_input
+                result = _run_tool(tc.function.name, tool_input, df)
                 last_result = result
                 record.result_summary = result.summary
-                tool_results_content.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result.to_json()),
-                    }
-                )
-            except ToolInputError as exc:
+                content = json.dumps(result.to_json())
+            except (ToolInputError, json.JSONDecodeError) as exc:
                 record.error = str(exc)
-                tool_results_content.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": str(exc),
-                        "is_error": True,
-                    }
-                )
+                content = f"Error: {exc}"
             call_log.append(record)
-        messages.append({"role": "user", "content": tool_results_content})
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": content})
 
-    chart_kind = None
-    if last_result is not None:
-        chart_kind = _chart_kind_for(schema, last_result.table)
+    chart_kind = _chart_kind_for(schema, last_result.table) if last_result else None
     return AgentAnswer(
         text="I ran out of tool-call turns without reaching a final answer.",
         tool_calls=call_log,

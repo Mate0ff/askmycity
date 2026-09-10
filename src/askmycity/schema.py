@@ -1,5 +1,6 @@
 """Describes the cached dataset's columns and turns that description into
-Anthropic tool-use JSON schemas for the two analytics tools.
+JSON-schema tool definitions for the two analytics tools (provider-agnostic
+— `agent.py` wraps these in whatever shape the LLM API expects).
 
 Everything the agent knows about *which columns exist* lives in one
 `DatasetSchema` instance. That keeps `tools.py` (the actual computation)
@@ -132,7 +133,8 @@ ACTIVE_SCHEMA = AUSTIN_311_SCHEMA
 
 
 def build_tool_definitions(schema: DatasetSchema) -> list[dict]:
-    """Anthropic `tools` param: JSON schemas for filter_and_aggregate and top_n.
+    """Flat {name, description, input_schema} tool defs for filter_and_aggregate and top_n.
+    `agent.py` wraps these in whatever shape the LLM provider's API expects.
 
     Column names are documented in the description text rather than as strict
     JSON-schema enums for filter *values* (categories like sr_type_desc have
