@@ -1,7 +1,7 @@
 """AskMyCity — Streamlit entrypoint.
 
 Ask a natural-language question about a city's 311-style service requests;
-a tool-use LLM agent (Groq/Llama) answers it by calling deterministic,
+a tool-use LLM agent (Groq/GPT-OSS-120B) answers it by calling deterministic,
 testable analytics tools (never arbitrary code) against the cached dataset.
 """
 
